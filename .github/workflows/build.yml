@@ -1,0 +1,157 @@
+name: Build Docker Images
+
+on:
+  push:
+    branches: [ "main" ]
+
+concurrency:
+  group: build
+
+env:
+  REGISTRY: us-central1-docker.pkg.dev/gravity-assist/gravity-assist
+  GO_VERSION: '1.21.4'
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            src:
+              - '**/*.go'
+  
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.src == 'true' }}
+
+    strategy:
+      matrix:
+        cmd:
+          - anonymizer
+        os:
+          - linux
+        arch:
+          - amd64
+          - arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.os }}/${{ matrix.arch }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: _json_key_base64
+          password: ${{ secrets.GAR_JSON_KEY }}
+
+      - name: Docker Metadatadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ matrix.cmd }}
+
+      - name: Build Binary
+        run: make ${{ matrix.cmd }}
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+
+      - name: Build Docker Image
+        id: dockerBuild
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: cmd/${{ matrix.cmd }}/Dockerfile
+          platforms: ${{ matrix.os }}/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.cmd }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export Image Digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.dockerBuild.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"          
+
+      - name: Upload Digest
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.cmd }}-digests
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge Docker Images
+    runs-on: ubuntu-latest
+    needs: [ build, changes ]
+    if: ${{ needs.changes.outputs.src == 'true' }}
+
+    strategy:
+      matrix:
+        cmd:
+          - anonymizer
+
+    steps:
+      - name: Download Digests
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ matrix.cmd }}-digests
+          path: /tmp/digests
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: _json_key_base64
+          password: ${{ secrets.GAR_JSON_KEY }}
+
+      - name: Docker Metadatadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ matrix.cmd }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ matrix.cmd }}@sha256:%s ' *)     
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ matrix.cmd }}:${{ steps.meta.outputs.version }}

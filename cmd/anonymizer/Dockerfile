@@ -1,0 +1,12 @@
+FROM gcr.io/distroless/base-debian12
+
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY bin/anonymizer_${TARGETOS}_${TARGETARCH} /app
+
+EXPOSE 1234
+EXPOSE 7070
+EXPOSE 9090
+
+ENTRYPOINT ["/app"]

@@ -1,0 +1,92 @@
+name: Security Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+
+env:
+  GO_VERSION: '1.21.4'
+
+jobs:
+  KubeLint:
+    name: Perform KubeLinter analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run KubeLinter
+        id: kube-linter-action-scan
+        uses: stackrox/kube-linter-action@v1
+        with:
+          directory: kubernetes
+          config: .kube-linter.yaml
+          #format: sarif
+          #output-file: kube-linter.sarif
+        #continue-on-error: true
+
+      # Pending GHAS purchase
+
+      #- name: Upload SARIF file
+      #  uses: github/codeql-action/upload-sarif@v2
+      #  with:
+      #    sarif_file: kube-linter.sarif
+      #    category: KubeLinter
+
+      #- name: Verify kube-linter-action succeeded
+      #  shell: bash
+      #  run: |
+      #    echo "If this step fails, kube-linter found issues. Check the output of the scan step above."
+      #    [[ "${{ steps.kube-linter-action-scan.outcome }}" == "success" ]]
+  
+  
+  SAST:
+    name: Perform SAST analysis (golangci-lint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Generate
+        run: make generate
+
+      - name: Run SAST (golangci-lint)
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: "latest"
+          only-new-issues: true
+          args: --timeout=10m
+          skip-pkg-cache: true
+          skip-build-cache: true
+
+  SCA:
+    name: Perform SCA analysis (govulncheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Generate
+        run: make generate
+
+      - name: Run SCA (govulncheck)
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: ${{ env.GO_VERSION }}
+          go-package: ./...
+          cache: false
