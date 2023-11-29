@@ -8,7 +8,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.51.0
 	github.com/paemuri/brdoc v1.1.2
 	github.com/rs/zerolog v1.31.0
-	github.com/stellarentropy/gravity-assist-common v0.0.0-20231129120434-ea3998da83bf
+	github.com/stellarentropy/gravity-assist-common v0.0.0-20231129141612-8e61f92c2271
 )
 
 require (
