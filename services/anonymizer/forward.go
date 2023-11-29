@@ -54,10 +54,6 @@ func ForwardRequest(c *fiber.Ctx) error {
 		// Wrap and return any error occurred during sending the request
 		return err
 	}
-	// Ensure the body and the counter are closed after processing the response
-	defer func() {
-		_ = resp.Body.Close()
-	}()
 
 	for k, v := range resp.Header {
 		c.Set(k, v[0])

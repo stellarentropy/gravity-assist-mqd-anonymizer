@@ -1,4 +1,4 @@
-.PHONY: agent
+.PHONY: anonymizer
 
 all: anonymizer
 

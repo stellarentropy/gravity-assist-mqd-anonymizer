@@ -27,7 +27,7 @@ var Anonymizer = &AnonymizerConfig{
 		GetAddress(),
 
 	AgentPort: config.NewEnv("GRAVITY_ASSIST_AGENT_LISTEN_PORT").
-		WithDefault("8080").
+		WithDefault("7071").
 		GetPort(),
 
 	AgentSchema: config.NewEnv("GRAVITY_ASSIST_AGENT_SCHEMA").
