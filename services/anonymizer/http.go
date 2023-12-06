@@ -5,14 +5,16 @@ import (
 	_ "expvar"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 
 	"github.com/stellarentropy/gravity-assist-mqd-anonymizer/health"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	config "github.com/stellarentropy/gravity-assist-mqd-anonymizer/config/anonymizer"
 
-	"github.com/goccy/go-json"
-	"github.com/gofiber/fiber/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/stellarentropy/gravity-assist-common/errors"
 	"github.com/stellarentropy/gravity-assist-mqd-anonymizer/config/common"
 )
@@ -21,12 +23,16 @@ import (
 // pre-configured with routes and associated handler functions for the
 // application. It includes routes for basic server functions, debugging, and
 // application-specific endpoints with appropriate middleware applied.
-func setupRouter(app *fiber.App) {
-	app.All("/*", ForwardRequest)
+func getRouter() *chi.Mux {
+	router := chi.NewRouter()
 
-	for _, v := range app.GetRoutes() {
-		logger.Info().Str("method", v.Method).Str("path", v.Path).Msg("registered route")
+	router.HandleFunc("/", ForwardRequest)
+
+	for _, v := range router.Routes() {
+		logger.Info().Str("pattern", v.Pattern).Msg("registered route")
 	}
+
+	return router
 }
 
 // Listen initializes an HTTP server with a predefined configuration and begins
@@ -48,22 +54,27 @@ func Listen(ctx context.Context) error {
 		Int("port", listener.Addr().(*net.TCPAddr).Port).
 		Msg("starting anonymizer server")
 
-	app := fiber.New(fiber.Config{
-		ReadTimeout:           common_config.Common.HealthReadTimeout,
-		WriteTimeout:          common_config.Common.HealthWriteTimeout,
-		JSONEncoder:           json.Marshal,
-		JSONDecoder:           json.Unmarshal,
-		StreamRequestBody:     true,
-		DisableStartupMessage: true,
-	})
-	setupRouter(app)
+	// Get the address of the server
+	addr := listener.Addr().(*net.TCPAddr).String()
+
+	router := getRouter()
+
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      h2c.NewHandler(router, &http2.Server{}),
+		ReadTimeout:  common_config.Common.HealthReadTimeout,
+		WriteTimeout: common_config.Common.HealthWriteTimeout,
+	}
 
 	// Start a goroutine that waits for the context to be done and then shuts down the server
 	go func() {
 		<-ctx.Done()
 		logger.Info().Msg("shutting down anonymizer server")
 
-		if err := app.ShutdownWithTimeout(common_config.Common.GracefulShutdownTimeout); err != nil {
+		tctx, cancel := context.WithTimeout(context.Background(), common_config.Common.GracefulShutdownTimeout)
+		defer cancel()
+
+		if err := server.Shutdown(tctx); err != nil {
 			// Log any errors that occur during server shutdown
 			logger.Error().Err(err).Msg("error shutting down anonymizer server")
 		}
@@ -73,7 +84,7 @@ func Listen(ctx context.Context) error {
 	health.Ready()
 
 	// Start the server and return any errors that occur
-	return app.Listener(listener)
+	return server.Serve(listener)
 }
 
 func Start(ctx context.Context, wg *sync.WaitGroup) {
@@ -82,7 +93,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup) {
 	go func() {
 		defer wg.Done()
 
-		if err := Listen(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := Listen(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error().Err(err).Msg("error in anonymizer server")
 			panic(err)
 		}

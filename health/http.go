@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stellarentropy/gravity-assist-common/errors"
 	"github.com/stellarentropy/gravity-assist-mqd-anonymizer/config/common"
-
-	"github.com/gofiber/fiber/v2"
-
-	"github.com/goccy/go-json"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 var ready = false
@@ -20,21 +20,26 @@ func Ready() {
 	ready = true
 }
 
-func setupRouter(app *fiber.App) {
-	app.Get("/healthz", func(c *fiber.Ctx) error {
-		return c.SendString("OK")
+func getRouter() *chi.Mux {
+	router := chi.NewRouter()
+
+	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("OK"))
 	})
 
-	app.Get("/readyz", func(c *fiber.Ctx) error {
+	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if ready {
-			return c.SendString("OK")
+			_, _ = w.Write([]byte("OK"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		return c.SendStatus(fiber.StatusServiceUnavailable)
 	})
 
-	for _, v := range app.GetRoutes() {
-		logger.Info().Str("method", v.Method).Str("path", v.Path).Msg("registered route")
+	for _, v := range router.Routes() {
+		logger.Info().Str("pattern", v.Pattern).Msg("registered route")
 	}
+
+	return router
 }
 
 func Listen(ctx context.Context) error {
@@ -52,14 +57,17 @@ func Listen(ctx context.Context) error {
 		Int("port", listener.Addr().(*net.TCPAddr).Port).
 		Msg("starting health server")
 
-	app := fiber.New(fiber.Config{
-		ReadTimeout:           common_config.Common.HealthReadTimeout,
-		WriteTimeout:          common_config.Common.HealthWriteTimeout,
-		JSONEncoder:           json.Marshal,
-		JSONDecoder:           json.Unmarshal,
-		DisableStartupMessage: true,
-	})
-	setupRouter(app)
+	router := getRouter()
+
+	// Get the address of the server
+	addr := listener.Addr().(*net.TCPAddr).String()
+
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      h2c.NewHandler(router, &http2.Server{}),
+		ReadTimeout:  common_config.Common.HealthReadTimeout,
+		WriteTimeout: common_config.Common.HealthWriteTimeout,
+	}
 
 	// Start a new goroutine that listens for the context cancellation signal
 	go func() {
@@ -68,14 +76,17 @@ func Listen(ctx context.Context) error {
 		// Log the shutting down of the health server
 		logger.Info().Msg("shutting down health server")
 
+		tctx, cancel := context.WithTimeout(context.Background(), common_config.Common.GracefulShutdownTimeout)
+		defer cancel()
+
 		// Attempt to gracefully shut down the server and log any errors
-		if err := app.ShutdownWithTimeout(common_config.Common.GracefulShutdownTimeout); err != nil {
+		if err := server.Shutdown(tctx); err != nil {
 			logger.Error().Err(err).Msg("error shutting down health server")
 		}
 	}()
 
 	// Start the server and return any errors encountered
-	return app.Listener(listener)
+	return server.Serve(listener)
 }
 
 func Start(ctx context.Context, wg *sync.WaitGroup) {
@@ -84,7 +95,7 @@ func Start(ctx context.Context, wg *sync.WaitGroup) {
 	go func() {
 		defer wg.Done()
 
-		if err := Listen(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := Listen(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error().Err(err).Msg("error in health server")
 			panic(err)
 		}

@@ -2,13 +2,12 @@ package anonymizer
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	config "github.com/stellarentropy/gravity-assist-mqd-anonymizer/config/anonymizer"
 )
 
@@ -26,40 +25,46 @@ func init() {
 	}
 }
 
-func ForwardRequest(c *fiber.Ctx) error {
+func ForwardRequest(w http.ResponseWriter, r *http.Request) {
+	defer func() { _ = r.Body.Close() }()
+
 	agentUrl := url.URL{}
 
 	agentUrl.Scheme = config.Anonymizer.AgentSchema
 	agentUrl.Host = net.JoinHostPort(config.Anonymizer.AgentAddress, fmt.Sprintf("%d", config.Anonymizer.AgentPort))
 
 	// Parse the input endpoint into a URL structure
-	agentUrl.Path = utils.CopyString(c.OriginalURL())
+	agentUrl.Path = r.URL.Path
 
 	// Create a new HTTP request with the given method, URL, and body
-	req, err := http.NewRequest(c.Method(), agentUrl.String(), AnonymizePayload(c.Request().BodyStream()))
+	req, err := http.NewRequest(r.Method, agentUrl.String(), AnonymizePayload(r.Body))
 	if err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Set the headers for the request
-	for k, v := range c.GetReqHeaders() {
+	for k, v := range r.Header {
 		req.Header.Set(k, v[0])
 	}
 	// Attach the context to the request
-	req = req.WithContext(c.Context())
+	req = req.WithContext(r.Context())
 
 	// Send the HTTP request
 	resp, err := client.Do(req)
 	if err != nil {
-		// Wrap and return any error occurred during sending the request
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	for k, v := range resp.Header {
-		c.Set(k, v[0])
+		w.Header().Set(k, v[0])
 	}
 
-	c.Status(resp.StatusCode)
+	w.WriteHeader(resp.StatusCode)
 
-	return c.SendStream(resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
