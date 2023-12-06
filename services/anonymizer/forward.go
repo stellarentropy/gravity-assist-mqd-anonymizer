@@ -56,6 +56,7 @@ func ForwardRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer func() { _ = resp.Body.Close() }()
 
 	for k, v := range resp.Header {
 		w.Header().Set(k, v[0])
