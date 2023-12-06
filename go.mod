@@ -7,7 +7,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/paemuri/brdoc v1.1.2
 	github.com/rs/zerolog v1.31.0
-	github.com/stellarentropy/gravity-assist-common v0.0.0-20231129141612-8e61f92c2271
+	github.com/stellarentropy/gravity-assist-common v0.0.0-20231206131156-498186ab916e
 	golang.org/x/net v0.17.0
 )
 

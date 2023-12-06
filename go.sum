@@ -26,6 +26,8 @@ github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c
 github.com/segmentio/ksuid v1.0.4/go.mod h1:/XUiZBD3kVx5SmUOl55voK5yeAbBNNIed+2O73XgrPE=
 github.com/stellarentropy/gravity-assist-common v0.0.0-20231129141612-8e61f92c2271 h1:gPLdg4iXHrgrVMssDlgcbHF+JxWMrf2901rqz5nSr0w=
 github.com/stellarentropy/gravity-assist-common v0.0.0-20231129141612-8e61f92c2271/go.mod h1:scupUrAkebl9hOf3o3M/cuEyF5CgbWUZsJzKqjDhQ1o=
+github.com/stellarentropy/gravity-assist-common v0.0.0-20231206131156-498186ab916e h1:oHS70970ACwIRpAVNqmYixNAo/YsAbg6W3e3f5LdNj0=
+github.com/stellarentropy/gravity-assist-common v0.0.0-20231206131156-498186ab916e/go.mod h1:MHXmqNQNYAsLBizZIX4sGxJTDyUersZV3rNJXhjR1DI=
 github.com/stellarentropy/isaac64 v0.0.0-20231027223639-d0cef4761baf h1:1gvCX8I365jdAHyHQ7lT8UxXmjZg8b61og+cCca8LLg=
 github.com/stellarentropy/isaac64 v0.0.0-20231027223639-d0cef4761baf/go.mod h1:8ZGAytVjsCaaabqDqj+i6r0IuuQmBIg6afecAWVANsw=
 github.com/stellarentropy/uuid v0.0.0-20231027224247-2ba7682b6409 h1:KBSRYYRnGhVKUzylJ7eMZFsA+yTp0gVQsRejn/ZT/iw=
