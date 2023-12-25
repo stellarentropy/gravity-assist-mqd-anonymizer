@@ -4,7 +4,7 @@ go 1.21.1
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0
-	github.com/go-chi/chi/v5 v5.0.10
+	github.com/go-chi/chi/v5 v5.0.11
 	github.com/paemuri/brdoc v1.1.2
 	github.com/rs/zerolog v1.31.0
 	github.com/stellarentropy/gravity-assist-common v0.0.0-20231206131156-498186ab916e
